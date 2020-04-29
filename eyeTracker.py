@@ -3,11 +3,12 @@
 # python eyetracking.py --face cascades/haarcascade_frontalface_default.xml --eye cascades/haarcascade_eye.xml
 
 # import the necessary packages
-from et import EyeTracker
+from et import ET
 import imutils
 import argparse
 import cv2
 
+'''
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
 ap.add_argument("-f", "--face", required = True,
@@ -19,7 +20,7 @@ ap.add_argument("-v", "--video",
 args = vars(ap.parse_args())
 
 # construct the eye tracker
-et = EyeTracker(args["face"], args["eye"])
+et = ET(args["face"], args["eye"])
 
 # if a video path was not supplied, grab the reference
 # to the gray
@@ -29,6 +30,11 @@ if not args.get("video", False):
 # otherwise, load the video
 else:
 	camera = cv2.VideoCapture(args["video"])
+'''
+#since arguments are always the same I took out the important parts
+#from commented section above
+et = ET("cascades/haarcascade_frontalface_default.xml", "eye cascades/haarcascade_eye.xml")
+camera = cv2.VideoCapture(0)
 
 # keep looping
 while True:
@@ -37,22 +43,33 @@ while True:
 
 	# if we are viewing a video and we did not grab a
 	# frame, then we have reached the end of the video
-	if args.get("video") and not grabbed:
-		break
+	#if args.get("video") and not grabbed:
+		#break
 
 	# resize the frame and convert it to grayscale
 	frame = imutils.resize(frame, width = 300)
 	gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-	# detect faces and eyes in the image
-	rects = et.track(gray)
+	# detect first eye
+	rect = et.track(gray)[0]
 
-	# loop over the face bounding boxes and draw them
-	for rect in rects:
-		cv2.rectangle(frame, (rect[0], rect[1]), (rect[2], rect[3]), (0, 255, 0), 2)
+	# draw the rectangle
+	cv2.rectangle(frame, (rect[0], rect[1]), (rect[2], rect[3]), (0, 255, 0), 2)
 
-	# show the tracked eyes and face
-	cv2.imshow("Tracking", frame)
+	#makes a copy of the frame to manipulate and resize
+	frameClone = frame.copy()
+
+	for (fX, fY, fW, fH) in rect:
+		#if it identifies and tracks eyes, collapse the box to only include the first eye
+		if fH > 0 and fW > 0:
+			frameClone = frameClone[fY:fY + fH, fX:fX + fW]
+		#otherwise show the whole face
+		else:
+			frameClone = frame.copy()
+
+
+	# show the frame
+	cv2.imshow("Tracking", frameClone)
 
 	# if the 'q' key is pressed, stop the loop
 	if cv2.waitKey(1) & 0xFF == ord("q"):

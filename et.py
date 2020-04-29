@@ -1,6 +1,6 @@
 import cv2
 
-class EyeTracker:
+class ET:
     def __init__(self, faceCascadePath, eyeCascadePath):
         self.faceCascade = cv2.CascadeClassifier(faceCascadePath)
         self.eyeCascade = cv2.CascadeClassifier(eyeCascadePath)
