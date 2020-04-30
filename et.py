@@ -10,20 +10,21 @@ class ET:
         scaleFactor = 1.1, minNeighbors = 5,
         minSize = (30, 30),
         flags = cv2.CASCADE_SCALE_IMAGE)
-        rects = []
+        faceRects = []
+        eyeRect = []
 
         for (fX, fY, fW, fH) in faceRects:
             faceROI = image[fY:fY + fH, fX:fX + fW]
-            rects.append((fX, fY, fX + fW, fY + fH))
+            faceRects.append((fX, fY, fX + fW, fY + fH))
 
             eyeRects = self.eyeCascade.detectMultiScale(faceROI,
             scaleFactor = 1.1, minNeighbors = 10,
             minSize = (20, 20),
             flags = cv2.CASCADE_SCALE_IMAGE)
 
-            for (eX, eY, eW, eH) in eyeRects:
-                rects.append(
+            for (eX, eY, eW, eH) in eyeRects[0]:
+                eyeRect.append(
                 (fX + eX, fY + eY, fX + eX + eW, fY + eY + eH))
 
-        return rects
+        return faceRects, eyeRect
 
