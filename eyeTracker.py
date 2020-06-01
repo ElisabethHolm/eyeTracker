@@ -38,16 +38,22 @@ def resizeFrame():
 	# if there is an eye detected
 	if len(rects_e) > 0:
 		eye1 = rects_e[0]
-		eye1 = rolling_average(eye1) #rolling average makes the box smoother but runs into issues when "eye1" switches between right and left
+		#uncomment line below to bring back rolling average, not benefitting program as of now
+		#eye1 = rolling_average(eye1) #rolling average makes the box smoother but runs into issues when "eye1" switches between right and left
 		# if the height and width of the first eye is greater than 0 (aka exists)
 		if eye1[3] > 0 and eye1[2] > 0:
 			#resize frame to just the dimensions of eye tracking box
 			#adding and subtracting percentage of frame reduce the frame to include as little area around the eye as possible
-			ypercent = 0#int((eye1[3] - eye1[1]) * .25)
-			xpercent = 0#int((eye1[2] - eye1[0]) * .13)
+			ypercent = int((eye1[3] - eye1[1]) * .25)
+			xpercent = int((eye1[2] - eye1[0]) * .13)
 			frameClone = frameClone[eye1[1]+ypercent:eye1[3]-ypercent, eye1[0]+xpercent:eye1[2]-xpercent]
-			#open a window showing only the first eye
-			#cv2.imshow("Only eye", frameClone)
+
+			width = int(frameClone.shape[1] * 2)
+			height = int(frameClone.shape[0] * 2)
+			dim = (width, height)
+			# resize image
+			frameClone = cv2.resize(frameClone, dim, interpolation=cv2.INTER_AREA)
+
 	#otherwise show the whole face
 	else:
 		frameClone = []
@@ -55,6 +61,7 @@ def resizeFrame():
 	#continuously show entire frame in separate window
 	cv2.imshow("Whole camera", frame)
 	#returns the frame cropped to only one eye
+
 	return frameClone
 
 
@@ -95,6 +102,7 @@ while True:
 		gray_eye = cv2.cvtColor(eyeFrame, cv2.COLOR_BGR2GRAY)
 		gray_eye = cv2.GaussianBlur(gray_eye, (9, 9), 0) #(7,7)
 
+		rows, cols, _ = eyeFrame.shape
 
 		#only identifies darkest parts of frame (trying to find pupil)
 		threshold = cv2.adaptiveThreshold(gray_eye, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 3, 2)
@@ -105,7 +113,13 @@ while True:
 
 		for cnt in contours:
 			#draws the contours on the original color eye
-			cv2.drawContours(eyeFrame, [cnt], -1, (0, 0, 255), 1)
+			#cv2.drawContours(eyeFrame, [cnt], -1, (0, 0, 255), 1)
+			(x, y, w, h) = cv2.boundingRect(cnt)
+
+			cv2.rectangle(eyeFrame, (x,y), (x + w, y + h), (255, 0, 0), 1)
+			cv2.line(eyeFrame, (x + int(w/2), 0), (x + int(w/2), rows), (0, 255, 0), 1)
+			cv2.line(eyeFrame, (0, y + int(h/2)), (cols, y + int(h/2)), (0, 255, 0), 1)
+
 			#stops the loop after the first one so only the contour with the biggest area is drawn
 			break
 
