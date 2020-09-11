@@ -6,6 +6,7 @@
 from et import ET
 import imutils
 import cv2
+#import numpy as np #need if converting input for OTSU
 
 #replace parameters with file location of recognition libraries if different
 et = ET("cascades/haarcascade_frontalface_default.xml", "cascades/haarcascade_eye.xml") #recognition libraries
@@ -38,14 +39,14 @@ def resizeFrame():
 	# if there is an eye detected
 	if len(rects_e) > 0:
 		eye1 = rects_e[0]
-		#uncomment line below to bring back rolling average, not benefitting program as of now
-		#eye1 = rolling_average(eye1) #rolling average makes the box smoother but runs into issues when "eye1" switches between right and left
+		#toggle commenting out line below to bring back/take out rolling average, not benefitting program as of now
+		eye1 = rolling_average(eye1) #rolling average makes the box smoother but runs into issues when "eye1" switches between right and left
 		# if the height and width of the first eye is greater than 0 (aka exists)
 		if eye1[3] > 0 and eye1[2] > 0:
 			#resize frame to just the dimensions of eye tracking box
 			#adding and subtracting percentage of frame reduce the frame to include as little area around the eye as possible
-			ypercent = int((eye1[3] - eye1[1]) * .25)
-			xpercent = int((eye1[2] - eye1[0]) * .13)
+			ypercent = int((eye1[3] - eye1[1]) * .30)
+			xpercent = int((eye1[2] - eye1[0]) * .17)
 			frameClone = frameClone[eye1[1]+ypercent:eye1[3]-ypercent, eye1[0]+xpercent:eye1[2]-xpercent]
 
 			width = int(frameClone.shape[1] * 2)
@@ -100,12 +101,20 @@ while True:
 	if len(eyeFrame) > 0:
 		#converts eye frame to grayscale and applies Gaussian blur to reduce noise
 		gray_eye = cv2.cvtColor(eyeFrame, cv2.COLOR_BGR2GRAY)
-		gray_eye = cv2.GaussianBlur(gray_eye, (9, 9), 0) #(7,7)
+		gray_eye = cv2.GaussianBlur(gray_eye, (11,11), 0) #(7,7) #(9,9)
+
+		#gray_eye = cv2.Canny(gray_eye, 30, 150) #get rid of if not using OTSU
 
 		rows, cols, _ = eyeFrame.shape
 
 		#only identifies darkest parts of frame (trying to find pupil)
-		threshold = cv2.adaptiveThreshold(gray_eye, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 3, 2)
+		#threshold = cv2.adaptiveThreshold(gray_eye, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 3, 2)  #good w blur (11, 11) or (9,9)
+		#threshold = cv2.adaptiveThreshold(gray_eye, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 5, 1) #good w blur (13, 13)
+		#threshold = cv2.adaptiveThreshold(gray_eye, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 5, 2) #clear pupil but eyelid, blur (7,7)
+		threshold = cv2.adaptiveThreshold(gray_eye, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 5, 3) # good, blur (11,11)
+		#threshold = cv2.adaptiveThreshold(gray_eye,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY_INV,3,1) #higher threshhold, counts eyelid instead of pupil
+		#threshold = cv2.threshold(gray_eye, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU) #doesn't work w current gray_eye input type
+
 		#finds the contours of the threshold
 		contours, _ = cv2.findContours(threshold, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 		#sorts the contours by area with largest area first
@@ -114,6 +123,7 @@ while True:
 		for cnt in contours:
 			#draws the contours on the original color eye
 			#cv2.drawContours(eyeFrame, [cnt], -1, (0, 0, 255), 1)
+			#x and y coordinates of top right corner of bounding box, width and height of bounding box
 			(x, y, w, h) = cv2.boundingRect(cnt)
 
 			cv2.rectangle(eyeFrame, (x,y), (x + w, y + h), (255, 0, 0), 1)
@@ -121,6 +131,7 @@ while True:
 			cv2.line(eyeFrame, (0, y + int(h/2)), (cols, y + int(h/2)), (0, 255, 0), 1)
 
 			#stops the loop after the first one so only the contour with the biggest area is drawn
+			#using a loop bc no errors if no eyes detected (if nothing in the list contours)
 			break
 
 		cv2.imshow("Only eye", eyeFrame)
@@ -129,7 +140,7 @@ while True:
 
 
 
-	# if the 'q' key is pressed, stop the loop
+	# if the 'q' key is pressed, stop the big while loop, moves on to camera cleanup
 	if cv2.waitKey(1) & 0xFF == ord("q"):
 		break
 
