@@ -29,8 +29,9 @@ def resizeFrame():
 	# draw the rectangles in the full sized camera view
 	for r in rects_f:
 		cv2.rectangle(frame, (r[0], r[1]), (r[2], r[3]), (0, 255, 0), 2)
-	for r in rects_e:
-		cv2.rectangle(frame, (r[0], r[1]), (r[2], r[3]), (0, 255, 0), 2)
+	#for r in rects_e:
+		#cv2.rectangle(frame, (r[0], r[1]), (r[2], r[3]), (0, 255, 0), 2)
+		#commented out drawing bounding box for eyes bc box showed up in frame when using rolling avg
 
 	#makes a copy of the frame to manipulate and resize
 	frameClone = frame.copy()
@@ -38,7 +39,12 @@ def resizeFrame():
 	#if it identifies and tracks eyes, collapse the box to only include the first eye
 	# if there is an eye detected
 	if len(rects_e) > 0:
-		eye1 = rects_e[0]
+		#try to use the second eye to avoid complications in switching eyes
+		try:
+			eye1 = rects_e[1]
+		#if only one eye detected, rects_e[1] --> error --> use the first eye detected
+		except:
+			eye1 = rects_e[0]
 		#toggle commenting out line below to bring back/take out rolling average, not benefitting program as of now
 		eye1 = rolling_average(eye1) #rolling average makes the box smoother but runs into issues when "eye1" switches between right and left
 		# if the height and width of the first eye is greater than 0 (aka exists)
@@ -101,7 +107,7 @@ while True:
 	if len(eyeFrame) > 0:
 		#converts eye frame to grayscale and applies Gaussian blur to reduce noise
 		gray_eye = cv2.cvtColor(eyeFrame, cv2.COLOR_BGR2GRAY)
-		gray_eye = cv2.GaussianBlur(gray_eye, (11,11), 0) #(7,7) #(9,9)
+		gray_eye = cv2.GaussianBlur(gray_eye, (7,7), 0) #(7,7) #(9,9)
 
 		#gray_eye = cv2.Canny(gray_eye, 30, 150) #get rid of if not using OTSU
 
@@ -110,29 +116,71 @@ while True:
 		#only identifies darkest parts of frame (trying to find pupil)
 		#threshold = cv2.adaptiveThreshold(gray_eye, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 3, 2)  #good w blur (11, 11) or (9,9)
 		#threshold = cv2.adaptiveThreshold(gray_eye, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 5, 1) #good w blur (13, 13)
-		#threshold = cv2.adaptiveThreshold(gray_eye, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 5, 2) #clear pupil but eyelid, blur (7,7)
-		threshold = cv2.adaptiveThreshold(gray_eye, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 5, 3) # good, blur (11,11)
+		threshold = cv2.adaptiveThreshold(gray_eye, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 5, 2) #clear pupil but eyelid, blur (7,7)
+		#threshold = cv2.adaptiveThreshold(gray_eye, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 5, 3) # good, blur (11,11)
 		#threshold = cv2.adaptiveThreshold(gray_eye,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY_INV,3,1) #higher threshhold, counts eyelid instead of pupil
 		#threshold = cv2.threshold(gray_eye, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU) #doesn't work w current gray_eye input type
 
 		#finds the contours of the threshold
 		contours, _ = cv2.findContours(threshold, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
 		#sorts the contours by area with largest area first
 		contours = sorted(contours, key=lambda x: cv2.contourArea(x), reverse = True)
 
+		#get the dimensions for each contour and put them into cntDimensions[]
+		cntDimensions = []
+		for cnt in contours:
+			#epsilon = 0.1 * cv2.arcLength(cnt, True)
+			#approx = cv2.approxPolyDP(cnt, epsilon, True)
+			x, y, w, h = cv2.boundingRect(cnt)
+			cntDimensions.append([x,y,w,h])
+
+			#only takes the contours w the top 3 biggest areas HOW DO I MAKE THE CONTOURS GROUP UP BETTER????
+			if len(cntDimensions) == 3:
+				break
+
+		#have to put in a try/except bc will give error (at ratios.index(min(ratios))) if no contours to make ratios with
+		try:
+			#get the ratios of width/height for each contour and add how far it is from 1 to ratios[]
+			ratios = []
+			for dim in cntDimensions:
+				#ratio = width of contour bounding box/height of contour bounding box
+				ratio = dim[2]/dim[3]
+				#how far it is from 1 (pupil is circle so it should be height = width --> ratio of 1)
+				ratios.append(abs(1 - ratio))
+
+			pupilCntIndex = ratios.index(min(ratios)) #the index of the contour closest to a ratio of 1 for height vs width
+
+			#draws the contours on the original color eye
+			#cv2.drawContours(eyeFrame, [cnt], -1, (0, 0, 255), 1)
+			#x and y coordinates of top right corner of bounding box, width and height of bounding box
+			(x, y, w, h) = cv2.boundingRect(cnt)
+
+			#draws rectangle + horizontal line and vertical line down center of rectangle
+			cv2.rectangle(eyeFrame, (x, y), (x + w, y + h), (255, 255, 0), 1)
+			cv2.line(eyeFrame, (x + int(w / 2), 0), (x + int(w / 2), rows), (0, 255, 0), 1)
+			cv2.line(eyeFrame, (0, y + int(h / 2)), (cols, y + int(h / 2)), (0, 255, 0), 1)
+		except:
+			continue
+
+
+
+		'''	
+		#commented out bc this was for when the "pupil" was determined by largest area
 		for cnt in contours:
 			#draws the contours on the original color eye
 			#cv2.drawContours(eyeFrame, [cnt], -1, (0, 0, 255), 1)
 			#x and y coordinates of top right corner of bounding box, width and height of bounding box
 			(x, y, w, h) = cv2.boundingRect(cnt)
 
-			cv2.rectangle(eyeFrame, (x,y), (x + w, y + h), (255, 0, 0), 1)
+			cv2.rectangle(eyeFrame, (x,y), (x + w, y + h), (255, 255, 0), 1)
 			cv2.line(eyeFrame, (x + int(w/2), 0), (x + int(w/2), rows), (0, 255, 0), 1)
 			cv2.line(eyeFrame, (0, y + int(h/2)), (cols, y + int(h/2)), (0, 255, 0), 1)
 
 			#stops the loop after the first one so only the contour with the biggest area is drawn
 			#using a loop bc no errors if no eyes detected (if nothing in the list contours)
 			break
+		'''
 
 		cv2.imshow("Only eye", eyeFrame)
 		cv2.imshow("grayscale eye", gray_eye)
@@ -145,5 +193,6 @@ while True:
 		break
 
 # cleanup the camera and close any open windows
+#line
 camera.release()
 cv2.destroyAllWindows()
