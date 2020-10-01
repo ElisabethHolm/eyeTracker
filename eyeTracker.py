@@ -46,7 +46,7 @@ def resizeFrame():
 		except:
 			eye1 = rects_e[0]
 		#toggle commenting out line below to bring back/take out rolling average, not benefitting program as of now
-		eye1 = rolling_average(eye1) #rolling average makes the box smoother but runs into issues when "eye1" switches between right and left
+		eye1 = rolling_average(eye1, "eye") #rolling average makes the box smoother but runs into issues when "eye1" switches between right and left
 		# if the height and width of the first eye is greater than 0 (aka exists)
 		if eye1[3] > 0 and eye1[2] > 0:
 			#resize frame to just the dimensions of eye tracking box
@@ -73,25 +73,46 @@ def resizeFrame():
 
 
 
-recents = []
+recentsEye = []
+recentsPupil = []
 #takes in a list of integers (x, y, width, and height) and computes a rolling average for the previous 5 frames
-def rolling_average(current):
-	#add the current frame onto the end of the list
-	recents.append(current)
-	if len(recents) > 5:
-		#limit the list length to the previous 5 frames
-		recents.pop(0)
+def rolling_average(current, eyeOrPupil):
+	#for making the rolling avg of the eye frame dimensions
+	if eyeOrPupil == "eye":
+		#add the current frame onto the end of the list
+		recentsEye.append(current)
+		if len(recentsEye) > 5:
+			#limit the list length to the previous 5 frames
+			recentsEye.pop(0)
+		avg_vals = [0, 0, 0, 0]
+		#adds all the x values, y values, etc in one list (avg_vals)
+		for l in recentsEye:
+			for i in range(0, 4):
+				avg_vals[i] += l[i]
 
-	avg_vals = [0, 0, 0, 0]
-	#adds all the x values, y values, etc in one list (avg_vals)
-	for l in recents:
-		for i in range(0, 4):
-			avg_vals[i] += l[i]
+		#computes the average and makes it an acceptable type (a rounded integer)
+		for i in range(0, len(avg_vals)):
+			avg_vals[i] = int(round(avg_vals[i]/len(recentsEye)))
 
-	#computes the average and makes it an acceptable type (a rounded integer)
-	for i in range(0, len(avg_vals)):
-		avg_vals[i] = int(round(avg_vals[i]/len(recents)))
+	#for making the rolling avg of the pupil box dimensions
+	elif eyeOrPupil == "pupil":
+		#add the current frame onto the end of the list
+		recentsPupil.append(current)
+		if len(recentsPupil) > 2:
+			#limit the list length to the previous 2 frames
+			recentsPupil.pop(0)
 
+		avg_vals = [0, 0, 0, 0]
+		#adds all the x values, y values, etc in one list (avg_vals)
+		for l in recentsPupil:
+			for i in range(4):
+				avg_vals[i] += l[i]
+
+		#computes the average and makes it an acceptable type (a rounded integer)
+		for i in range(0, len(avg_vals)):
+			avg_vals[i] = int(round(avg_vals[i]/len(recentsPupil)))
+
+	print(avg_vals)
 	return avg_vals
 
 
@@ -107,7 +128,7 @@ while True:
 	if len(eyeFrame) > 0:
 		#converts eye frame to grayscale and applies Gaussian blur to reduce noise
 		gray_eye = cv2.cvtColor(eyeFrame, cv2.COLOR_BGR2GRAY)
-		gray_eye = cv2.GaussianBlur(gray_eye, (7,7), 0) #(7,7) #(9,9)
+		gray_eye = cv2.GaussianBlur(gray_eye, (15,15), 0) #(7,7) #(9,9) #(11,11)
 
 		#gray_eye = cv2.Canny(gray_eye, 30, 150) #get rid of if not using OTSU
 
@@ -116,7 +137,7 @@ while True:
 		#only identifies darkest parts of frame (trying to find pupil)
 		#threshold = cv2.adaptiveThreshold(gray_eye, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 3, 2)  #good w blur (11, 11) or (9,9)
 		#threshold = cv2.adaptiveThreshold(gray_eye, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 5, 1) #good w blur (13, 13)
-		threshold = cv2.adaptiveThreshold(gray_eye, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 5, 2) #clear pupil but eyelid, blur (7,7)
+		threshold = cv2.adaptiveThreshold(gray_eye, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 5, 2) #clear pupil but eyelid, blur (7,7), super noisy but good pupil blob w blur (15,15)
 		#threshold = cv2.adaptiveThreshold(gray_eye, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 5, 3) # good, blur (11,11)
 		#threshold = cv2.adaptiveThreshold(gray_eye,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY_INV,3,1) #higher threshhold, counts eyelid instead of pupil
 		#threshold = cv2.threshold(gray_eye, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU) #doesn't work w current gray_eye input type
@@ -127,6 +148,10 @@ while True:
 		#sorts the contours by area with largest area first
 		contours = sorted(contours, key=lambda x: cv2.contourArea(x), reverse = True)
 
+		'''
+		#this code commented out determined the pupil from the contours based on the one closest to the ratio of width/height = 1
+		#Which would mean a square-like shape (or circle-like shape)
+		#but the contours didn't group well enough for it to work
 		#get the dimensions for each contour and put them into cntDimensions[]
 		cntDimensions = []
 		for cnt in contours:
@@ -135,7 +160,7 @@ while True:
 			x, y, w, h = cv2.boundingRect(cnt)
 			cntDimensions.append([x,y,w,h])
 
-			#only takes the contours w the top 3 biggest areas HOW DO I MAKE THE CONTOURS GROUP UP BETTER????
+			#only takes the contours w the top 3 biggest areas 
 			if len(cntDimensions) == 3:
 				break
 
@@ -166,12 +191,18 @@ while True:
 
 
 		'''	
-		#commented out bc this was for when the "pupil" was determined by largest area
+		#different method for determining pupil from contours:  the "pupil" is determined by largest area
 		for cnt in contours:
 			#draws the contours on the original color eye
 			#cv2.drawContours(eyeFrame, [cnt], -1, (0, 0, 255), 1)
 			#x and y coordinates of top right corner of bounding box, width and height of bounding box
 			(x, y, w, h) = cv2.boundingRect(cnt)
+
+			#computes the rolling avg for the previous 2 frames for the pupil bounding box dimensions
+			#must be compatible with the rolling_average method + code below these 3 lines (which is why it seems repetitive)
+			pupilDims = [x,y,w,h]
+			pupilDims = rolling_average(pupilDims, "pupil")
+			x,y,w,h = pupilDims[0], pupilDims[1], pupilDims[2], pupilDims[3]
 
 			cv2.rectangle(eyeFrame, (x,y), (x + w, y + h), (255, 255, 0), 1)
 			cv2.line(eyeFrame, (x + int(w/2), 0), (x + int(w/2), rows), (0, 255, 0), 1)
@@ -180,7 +211,7 @@ while True:
 			#stops the loop after the first one so only the contour with the biggest area is drawn
 			#using a loop bc no errors if no eyes detected (if nothing in the list contours)
 			break
-		'''
+
 
 		cv2.imshow("Only eye", eyeFrame)
 		cv2.imshow("grayscale eye", gray_eye)
