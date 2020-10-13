@@ -12,6 +12,7 @@ import cv2
 et = ET("cascades/haarcascade_frontalface_default.xml", "cascades/haarcascade_eye.xml") #recognition libraries
 camera = cv2.VideoCapture(0) #initializes camera
 
+calibrated = False
 
 #function that identifies eye and resizes frame to only one eye
 def resizeFrame():
@@ -26,7 +27,7 @@ def resizeFrame():
 	rects_f, rects_e = et.track(gray)
 
 
-	# draw the rectangles in the full sized camera view
+	# draw the face rectangles in the full sized camera view
 	for r in rects_f:
 		cv2.rectangle(frame, (r[0], r[1]), (r[2], r[3]), (0, 255, 0), 2)
 	#for r in rects_e:
@@ -36,6 +37,7 @@ def resizeFrame():
 	#makes a copy of the frame to manipulate and resize
 	frameClone = frame.copy()
 
+	eye1 = []
 	#if it identifies and tracks eyes, collapse the box to only include the first eye
 	# if there is an eye detected
 	if len(rects_e) > 0:
@@ -45,7 +47,7 @@ def resizeFrame():
 		#if only one eye detected, rects_e[1] --> error --> use the first eye detected
 		except:
 			eye1 = rects_e[0]
-		#toggle commenting out line below to bring back/take out rolling average, not benefitting program as of now
+		#toggle commenting out line below to bring back/take out rolling average
 		eye1 = rolling_average(eye1, "eye") #rolling average makes the box smoother but runs into issues when "eye1" switches between right and left
 		# if the height and width of the first eye is greater than 0 (aka exists)
 		if eye1[3] > 0 and eye1[2] > 0:
@@ -69,7 +71,7 @@ def resizeFrame():
 	cv2.imshow("Whole camera", frame)
 	#returns the frame cropped to only one eye
 
-	return frameClone
+	return frameClone, eye1 #returns resized frame
 
 
 
@@ -112,16 +114,63 @@ def rolling_average(current, eyeOrPupil):
 		for i in range(0, len(avg_vals)):
 			avg_vals[i] = int(round(avg_vals[i]/len(recentsPupil)))
 
-	print(avg_vals)
+	#print(avg_vals)
 	return avg_vals
 
 
+def calculatePosition(rect_eye, pupil):
+	print("calculating position")
+	eyeX, eyeY, eyeW, eyeH = rect_eye[0], rect_eye[1], rect_eye[2], rect_eye[3]  #dimensions of eye bounding box (x and y of top right corner)
+	pupilX, pupilY, pupilW, pupilH = pupil[0], pupil[1], pupil[2], pupil[3]  #dimensions of pupil bounding box (x and y of top right corner)
 
-# keeps looping while the program is running
-while True:
+	eyeCenter = ((eyeX + int(eyeW/2)), (eyeY + int(eyeH/2))) #(x,y) of center of eye bounding box
+	global adjustedCenter #from calibration
+	pupilCenter = ((pupilX + int(pupilW / 2)), (pupilY + int(pupilH / 2)))  #(x,y) of center of pupil bounding box
 
+	Xdifference = pupilCenter[0] - adjustedCenter[0] #difference in x's of adjustedCenter vs pupilCenter, - means pupil is left of center
+	Ydifference = adjustedCenter[1] - pupilCenter[1] #difference in y's of adjustedCenter vs pupilCenter, - means pupil is below center
+	print(Xdifference)
+	print(Ydifference)
+
+	#determining which of 9 areas gaze is placed in (areas split like tic tac toe board)
+
+	xMargin, yMargin = int(eyeW/26), int(eyeH/26) #not sure why the margins have to be divided so much, maybe issue with calc of xdiff and ydiff
+	print(xMargin)
+	print(yMargin)
+
+	#fairly inaccurate at this point, but getting there
+	if (Xdifference > 0) & (abs(Xdifference) > xMargin):
+		xdirection = "right"
+
+	elif (Xdifference < 0) & (abs(Xdifference) > xMargin):
+		xdirection = "left"
+
+	elif abs(Xdifference) <= xMargin:
+		xdirection = "center"
+
+	else:
+		xdirection = "invalid"
+
+
+	if (Ydifference > 0) & (abs(Ydifference) > yMargin):
+		ydirection = "upper"
+
+	elif (Ydifference < 0) & (abs(Ydifference) > yMargin):
+		ydirection = "lower"
+
+	elif abs(Ydifference) <= yMargin:
+		ydirection = "center"
+
+	else:
+		ydirection = "invalid"
+
+	return ydirection + " " + xdirection #returns description of area gaze is in (ex: upper right)
+
+
+# indentifies and tracks pupil
+def findPupil():
 	#function that resizes frame from original to just one eye
-	eyeFrame = resizeFrame()
+	eyeFrame, rect_e = resizeFrame()
 
 	#maybe use value as a percentage of the highest so it adjusts for high and low light conditions
 	#if an eye is detected, try to find the pupil
@@ -216,12 +265,43 @@ while True:
 		cv2.imshow("Only eye", eyeFrame)
 		cv2.imshow("grayscale eye", gray_eye)
 		cv2.imshow("threshold", threshold)
+		cv2.waitKey(1)
 
 
 
-	# if the 'q' key is pressed, stop the big while loop, moves on to camera cleanup
-	if cv2.waitKey(1) & 0xFF == ord("q"):
-		break
+	if calibrated == True:
+		try:
+			position = calculatePosition(rect_e, pupilDims)
+			print(position)
+		except: #will give error if no eyes detected (bc no pupilDims to pass in --> pass if no eyes detected)
+			pass
+
+	return pupilDims
+
+
+# calibrate() adjusts the eye's center reference point to where the pupil is when user looking at the center of the screen
+# need to make it dynamic adjusting for position of light source so user can move positions without issue
+adjustedCenter = []
+def calibrate():
+	print("Please look roughly at the center of the screen for 3 seconds")
+	cv2.waitKey(1500)  #give them 1.5 seconds to look at the center of the screen
+	pupil = findPupil()
+	pupilX, pupilY, pupilW, pupilH = pupil[0], pupil[1], pupil[2], pupil[3]  #dimensions of pupil bounding box (x and y of top right corner)
+	pupilCenter = ((pupilX + int(pupilW / 2)), (pupilY + int(pupilH / 2)))  #(x,y) of center of pupil bounding box
+	print("Your center point has been adjusted.")
+	print("Your center point is " + str(pupilCenter))
+	global calibrated
+	calibrated = True
+
+	global adjustedCenter
+	adjustedCenter = pupilCenter  #this is the adjusted reference point for where the eye is looking at the center of the screen
+
+#running the functions
+calibrate()
+
+while True:
+	findPupil()
+
 
 # cleanup the camera and close any open windows
 #line
